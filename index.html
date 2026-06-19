@@ -1938,10 +1938,11 @@ todo_app_notifications</pre>
 
   const searchInput = document.getElementById('search-input');
   const resultsEl = document.getElementById('search-results');
+  let searchTrackTimer = null;
 
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
-    if (!q) { closeSearchResults(); return; }
+    if (!q) { closeSearchResults(); clearTimeout(searchTrackTimer); return; }
 
     const matches = searchIndex.filter(item =>
       item.title.toLowerCase().includes(q) ||
@@ -1954,8 +1955,8 @@ todo_app_notifications</pre>
     } else {
       resultsEl.innerHTML =
         `<div class="sr-header">${matches.length} result${matches.length > 1 ? 's' : ''}</div>` +
-        matches.map(m => `
-          <div class="sr-item" onclick="navigate('${m.id}'); searchInput.value=''">
+        matches.map((m, i) => `
+          <div class="sr-item" onclick="selectSearchResult('${m.id}', '${m.title}', '${m.section}', ${i + 1}, ${matches.length})">
             <span class="sr-icon">${m.icon}</span>
             <div>
               <div class="sr-title">${m.title}</div>
@@ -1965,6 +1966,24 @@ todo_app_notifications</pre>
         `).join('');
     }
     resultsEl.classList.add('visible');
+
+    // Debounced Pendo tracking to avoid firing on every keystroke
+    clearTimeout(searchTrackTimer);
+    searchTrackTimer = setTimeout(function() {
+      if (typeof pendo !== 'undefined') {
+        pendo.track("documentation_searched", {
+          query: q,
+          resultsCount: matches.length,
+          matchedPageIds: matches.map(function(m) { return m.id; }).join(','),
+          matchedPageTitles: matches.map(function(m) { return m.title; }).join(',')
+        });
+        if (matches.length === 0) {
+          pendo.track("search_no_results", {
+            query: q
+          });
+        }
+      }
+    }, 500);
   });
 
   searchInput.addEventListener('keydown', e => {
@@ -1979,6 +1998,21 @@ todo_app_notifications</pre>
     resultsEl.classList.remove('visible');
   }
 
+  function selectSearchResult(pageId, pageTitle, section, position, totalResults) {
+    if (typeof pendo !== 'undefined') {
+      pendo.track("search_result_selected", {
+        query: searchInput.value.trim().toLowerCase(),
+        selectedPageId: pageId,
+        selectedPageTitle: pageTitle,
+        selectedSection: section,
+        resultPosition: position,
+        totalResults: totalResults
+      });
+    }
+    navigate(pageId);
+    searchInput.value = '';
+  }
+
   // ═══════════════════════ FAQ ═══════════════════════
   function toggleFaq(el) {
     el.classList.toggle('open');
@@ -1988,6 +2022,24 @@ todo_app_notifications</pre>
   function copyCode(btn) {
     const pre = btn.closest('.code-block').querySelector('pre');
     navigator.clipboard.writeText(pre.textContent).then(() => {
+      var codeBlock = btn.closest('.code-block');
+      var langEl = codeBlock.querySelector('.code-lang');
+      var codeLang = langEl ? langEl.textContent.trim() : 'unknown';
+      var activePage = document.querySelector('.page.active');
+      var pageId = activePage ? activePage.id.replace('page-', '') : 'unknown';
+      var allCodeBlocks = activePage ? activePage.querySelectorAll('.code-block') : [];
+      var codeBlockIndex = Array.from(allCodeBlocks).indexOf(codeBlock);
+      var contentPreview = pre.textContent.substring(0, 100);
+
+      if (typeof pendo !== 'undefined') {
+        pendo.track("code_snippet_copied", {
+          codeLang: codeLang,
+          pageId: pageId,
+          codeBlockIndex: codeBlockIndex,
+          contentPreview: contentPreview
+        });
+      }
+
       btn.textContent = 'Copied!';
       btn.classList.add('copied');
       setTimeout(() => {
