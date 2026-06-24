@@ -1939,6 +1939,9 @@ todo_app_notifications</pre>
   const searchInput = document.getElementById('search-input');
   const resultsEl = document.getElementById('search-results');
 
+  let _lastSearchResultsCount = 0;
+  let _searchTrackTimer;
+
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
     if (!q) { closeSearchResults(); return; }
@@ -1949,13 +1952,15 @@ todo_app_notifications</pre>
       item.section.toLowerCase().includes(q)
     ).slice(0, 6);
 
+    _lastSearchResultsCount = matches.length;
+
     if (matches.length === 0) {
       resultsEl.innerHTML = `<div class="sr-header">Results</div><div class="sr-no-results">No results for "${q}"</div>`;
     } else {
       resultsEl.innerHTML =
         `<div class="sr-header">${matches.length} result${matches.length > 1 ? 's' : ''}</div>` +
         matches.map(m => `
-          <div class="sr-item" onclick="navigate('${m.id}'); searchInput.value=''">
+          <div class="sr-item" onclick="selectSearchResult('${m.id}', '${m.title}', '${m.section}')">
             <span class="sr-icon">${m.icon}</span>
             <div>
               <div class="sr-title">${m.title}</div>
@@ -1965,6 +1970,16 @@ todo_app_notifications</pre>
         `).join('');
     }
     resultsEl.classList.add('visible');
+
+    // Pendo Track Event: documentation_searched (debounced)
+    clearTimeout(_searchTrackTimer);
+    _searchTrackTimer = setTimeout(() => {
+      pendo.track("documentation_searched", {
+        query: q,
+        results_count: matches.length,
+        has_results: matches.length > 0
+      });
+    }, 300);
   });
 
   searchInput.addEventListener('keydown', e => {
@@ -1979,6 +1994,20 @@ todo_app_notifications</pre>
     resultsEl.classList.remove('visible');
   }
 
+  // Pendo Track Event: search_result_selected
+  function selectSearchResult(pageId, pageTitle, pageSection) {
+    const query = searchInput.value.trim().toLowerCase();
+    pendo.track("search_result_selected", {
+      query: query,
+      selected_page_id: pageId,
+      selected_page_title: pageTitle,
+      selected_page_section: pageSection,
+      results_count: _lastSearchResultsCount
+    });
+    navigate(pageId);
+    searchInput.value = '';
+  }
+
   // ═══════════════════════ FAQ ═══════════════════════
   function toggleFaq(el) {
     el.classList.toggle('open');
@@ -1986,7 +2015,8 @@ todo_app_notifications</pre>
 
   // ═══════════════════════ COPY CODE ═══════════════════════
   function copyCode(btn) {
-    const pre = btn.closest('.code-block').querySelector('pre');
+    const codeBlock = btn.closest('.code-block');
+    const pre = codeBlock.querySelector('pre');
     navigator.clipboard.writeText(pre.textContent).then(() => {
       btn.textContent = 'Copied!';
       btn.classList.add('copied');
@@ -1994,6 +2024,15 @@ todo_app_notifications</pre>
         btn.textContent = 'Copy';
         btn.classList.remove('copied');
       }, 2000);
+
+      // Pendo Track Event: code_snippet_copied
+      const langEl = codeBlock.querySelector('.code-lang');
+      const activePage = document.querySelector('.page.active');
+      pendo.track("code_snippet_copied", {
+        code_language: langEl ? langEl.textContent.trim() : 'unknown',
+        page_id: activePage ? activePage.id.replace('page-', '') : 'unknown',
+        snippet_preview: pre.textContent.substring(0, 100)
+      });
     });
   }
 
