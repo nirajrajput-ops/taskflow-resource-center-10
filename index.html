@@ -1938,6 +1938,26 @@ todo_app_notifications</pre>
 
   const searchInput = document.getElementById('search-input');
   const resultsEl = document.getElementById('search-results');
+  let _searchDebounceTimer = null;
+  let _lastSearchQuery = '';
+  let _lastSearchMatches = [];
+
+  function selectSearchResult(index) {
+    var m = _lastSearchMatches[index];
+    if (!m) return;
+    if (typeof pendo !== 'undefined') {
+      pendo.track("search_result_selected", {
+        query: _lastSearchQuery.substring(0, 100),
+        selectedPageId: m.id,
+        selectedTitle: m.title,
+        selectedSection: m.section,
+        resultPosition: index + 1,
+        totalResults: _lastSearchMatches.length
+      });
+    }
+    navigate(m.id);
+    searchInput.value = '';
+  }
 
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
@@ -1949,13 +1969,16 @@ todo_app_notifications</pre>
       item.section.toLowerCase().includes(q)
     ).slice(0, 6);
 
+    _lastSearchQuery = q;
+    _lastSearchMatches = matches;
+
     if (matches.length === 0) {
       resultsEl.innerHTML = `<div class="sr-header">Results</div><div class="sr-no-results">No results for "${q}"</div>`;
     } else {
       resultsEl.innerHTML =
         `<div class="sr-header">${matches.length} result${matches.length > 1 ? 's' : ''}</div>` +
-        matches.map(m => `
-          <div class="sr-item" onclick="navigate('${m.id}'); searchInput.value=''">
+        matches.map((m, i) => `
+          <div class="sr-item" onclick="selectSearchResult(${i})">
             <span class="sr-icon">${m.icon}</span>
             <div>
               <div class="sr-title">${m.title}</div>
@@ -1965,6 +1988,20 @@ todo_app_notifications</pre>
         `).join('');
     }
     resultsEl.classList.add('visible');
+
+    // Debounced tracking of search queries
+    clearTimeout(_searchDebounceTimer);
+    _searchDebounceTimer = setTimeout(() => {
+      if (typeof pendo !== 'undefined') {
+        pendo.track("documentation_searched", {
+          query: q.substring(0, 100),
+          resultsCount: matches.length,
+          hasResults: matches.length > 0,
+          matchedPageIds: matches.map(function(m) { return m.id; }).join(','),
+          matchedSections: [].concat.apply([], matches.map(function(m) { return m.section; })).filter(function(v, i, a) { return a.indexOf(v) === i; }).join(',')
+        });
+      }
+    }, 300);
   });
 
   searchInput.addEventListener('keydown', e => {
@@ -1994,6 +2031,21 @@ todo_app_notifications</pre>
         btn.textContent = 'Copy';
         btn.classList.remove('copied');
       }, 2000);
+
+      // Track code snippet copied
+      if (typeof pendo !== 'undefined') {
+        var activePage = document.querySelector('.page.active');
+        var pageId = activePage ? activePage.id.replace('page-', '') : 'unknown';
+        var langEl = btn.closest('.code-block').querySelector('.code-lang');
+        var codeLanguage = langEl ? langEl.textContent.trim() : 'unknown';
+        var snippetText = pre.textContent || '';
+        pendo.track("code_snippet_copied", {
+          pageId: pageId,
+          codeLanguage: codeLanguage,
+          snippetPreview: snippetText.substring(0, 100),
+          snippetLength: snippetText.length
+        });
+      }
     });
   }
 
