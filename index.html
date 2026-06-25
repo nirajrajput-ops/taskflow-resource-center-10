@@ -1939,9 +1939,29 @@ todo_app_notifications</pre>
   const searchInput = document.getElementById('search-input');
   const resultsEl = document.getElementById('search-results');
 
+  let searchDebounceTimer;
+  let lastSearchContext = { q: '', matches: [] };
+
+  function selectSearchResult(index) {
+    const ctx = lastSearchContext;
+    const m = ctx.matches[index];
+    if (m) {
+      pendo.track('search_result_selected', {
+        query: ctx.q,
+        selectedPageId: m.id,
+        selectedTitle: m.title,
+        selectedSection: m.section,
+        resultPosition: index + 1,
+        totalResults: ctx.matches.length
+      });
+      navigate(m.id);
+      searchInput.value = '';
+    }
+  }
+
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
-    if (!q) { closeSearchResults(); return; }
+    if (!q) { clearTimeout(searchDebounceTimer); closeSearchResults(); return; }
 
     const matches = searchIndex.filter(item =>
       item.title.toLowerCase().includes(q) ||
@@ -1949,13 +1969,15 @@ todo_app_notifications</pre>
       item.section.toLowerCase().includes(q)
     ).slice(0, 6);
 
+    lastSearchContext = { q: q, matches: matches };
+
     if (matches.length === 0) {
       resultsEl.innerHTML = `<div class="sr-header">Results</div><div class="sr-no-results">No results for "${q}"</div>`;
     } else {
       resultsEl.innerHTML =
         `<div class="sr-header">${matches.length} result${matches.length > 1 ? 's' : ''}</div>` +
-        matches.map(m => `
-          <div class="sr-item" onclick="navigate('${m.id}'); searchInput.value=''">
+        matches.map((m, i) => `
+          <div class="sr-item" onclick="selectSearchResult(${i})">
             <span class="sr-icon">${m.icon}</span>
             <div>
               <div class="sr-title">${m.title}</div>
@@ -1965,6 +1987,16 @@ todo_app_notifications</pre>
         `).join('');
     }
     resultsEl.classList.add('visible');
+
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      pendo.track('search_executed', {
+        query: q,
+        resultsCount: matches.length,
+        hasResults: matches.length > 0,
+        matchedPageIds: matches.map(m => m.id).join(',')
+      });
+    }, 500);
   });
 
   searchInput.addEventListener('keydown', e => {
@@ -1988,6 +2020,14 @@ todo_app_notifications</pre>
   function copyCode(btn) {
     const pre = btn.closest('.code-block').querySelector('pre');
     navigator.clipboard.writeText(pre.textContent).then(() => {
+      const codeBlock = btn.closest('.code-block');
+      const langEl = codeBlock.querySelector('.code-lang');
+      const activePage = document.querySelector('.page.active');
+      pendo.track('code_snippet_copied', {
+        pageId: activePage ? activePage.id.replace('page-', '') : 'unknown',
+        codeLang: langEl ? langEl.textContent.trim() : 'unknown',
+        snippetPreview: pre.textContent.substring(0, 100)
+      });
       btn.textContent = 'Copied!';
       btn.classList.add('copied');
       setTimeout(() => {
