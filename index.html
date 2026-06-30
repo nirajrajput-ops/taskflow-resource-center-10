@@ -1939,6 +1939,7 @@ todo_app_notifications</pre>
   const searchInput = document.getElementById('search-input');
   const resultsEl = document.getElementById('search-results');
 
+  let searchTrackTimeout = null;
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
     if (!q) { closeSearchResults(); return; }
@@ -1948,6 +1949,17 @@ todo_app_notifications</pre>
       item.keywords.toLowerCase().includes(q) ||
       item.section.toLowerCase().includes(q)
     ).slice(0, 6);
+
+    if (searchTrackTimeout) clearTimeout(searchTrackTimeout);
+    searchTrackTimeout = setTimeout(() => {
+      if (typeof pendo !== 'undefined') {
+        pendo.track('resource_center_search', {
+          query: q.substring(0, 100),
+          resultsCount: matches.length,
+          hasResults: matches.length > 0,
+        });
+      }
+    }, 500);
 
     if (matches.length === 0) {
       resultsEl.innerHTML = `<div class="sr-header">Results</div><div class="sr-no-results">No results for "${q}"</div>`;
